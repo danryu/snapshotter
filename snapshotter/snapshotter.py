@@ -292,7 +292,7 @@ def _parse_path(path):
     """
     if _is_remote(path):
         before_first_colon, after_first_colon = path.split(':', 1)
-        if '@' in before_first_colon:   # so yes with dog@dog.com
+        if '@' in before_first_colon:
             user = before_first_colon.rsplit('@',1)[0]
         else:
             user = None
