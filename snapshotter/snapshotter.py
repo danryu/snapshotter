@@ -93,7 +93,7 @@ class NoSpaceLeftOnDeviceError(Exception):
     pass
 
 
-def _rsync(source, dest, debug=False, extra_args=None):
+def _rsync(source, dest, name, debug=False, extra_args=None):
     """Run an rsync command as a subprocess.
 
     :raises CalledProcessError: if rsync exits with a non-zero exit value
@@ -117,7 +117,7 @@ def _rsync(source, dest, debug=False, extra_args=None):
         '--delete-excluded',  # Also delete excluded files from dest dirs.
         '--itemize-changes',  # Output a change-summary for all updates.
         # Make hard-links to the previous snapshot, if any.
-        '--link-dest=../latest.snapshot',
+        # '--link-dest=../latest.snapshot',
         '--human-readable',  # Output numbers in a human-readable format.
         '--quiet',  # Suppress non-error output messages.
         '--compress',  # Compress files during transfer.
@@ -125,6 +125,10 @@ def _rsync(source, dest, debug=False, extra_args=None):
     ]
 
     rsync_cmd.extend(extra_args or [])
+   
+    # if not named then this is regular timed snapshot 
+    if name is None:
+        rsync_cmd.append('--link-dest=../latest.snapshot') 
 
     if debug:
         rsync_cmd.append('--dry-run')
@@ -137,7 +141,12 @@ def _rsync(source, dest, debug=False, extra_args=None):
         if user is not None:
             dest += "%s@" % user
         dest += "%s:" % host
-    dest += os.path.join(snapshots_root, "incomplete.snapshot")
+
+    if name is None: 
+        dest += os.path.join(snapshots_root, "incomplete.snapshot")
+    else:
+        dest += os.path.join(snapshots_root, "incomplete_%s.snapshot" % name)
+ 
     rsync_cmd.append(dest)
 
     try:
@@ -171,7 +180,7 @@ def _wrap_in_ssh(command, user, host):
     return ssh_command
 
 
-def _move_incomplete_dir(snapshots_root, date, user=None, host=None,
+def _move_incomplete_dir(snapshots_root, name, date, user=None, host=None,
                          debug=False):
     """Move the incomplete.snapshot dir to YYYY-MM-DDTHH_MM_SS.snapshot.
 
@@ -179,8 +188,12 @@ def _move_incomplete_dir(snapshots_root, date, user=None, host=None,
     by running `ssh [user@]host mv ...`.
 
     """
-    src = os.path.join(snapshots_root, "incomplete.snapshot")
-    dest = os.path.join(snapshots_root, date + ".snapshot")
+    if name is None:
+        src = os.path.join(snapshots_root, "incomplete.snapshot")
+        dest = os.path.join(snapshots_root, date + ".snapshot")
+    else:
+        src = os.path.join(snapshots_root, "incomplete_%s.snapshot" % name)
+        dest = os.path.join(snapshots_root, date + "_%s.snapshot" % name)
     mv_cmd = _wrap_in_ssh(["mv", src, dest], user, host)
     _info("Moving incomplete.snapshot")
     _run(mv_cmd, debug=debug)
@@ -369,6 +382,7 @@ def snapshot(source,
              debug=False,
              min_snapshots=3,
              max_snapshots=INF,
+             snapshot_name=None,
              extra_args=None):
     """Make a new snapshot of source in dest.
 
@@ -424,14 +438,15 @@ def snapshot(source,
 
     while True:
         try:
-            _rsync(source, dest, debug, extra_args)
+            _rsync(source, dest, snapshot_name, debug, extra_args)
             break
         except NoSpaceLeftOnDeviceError as err:
             _info(err)
             _remove_oldest_snapshot(
                 dest, user, host, min_snapshots=min_snapshots, debug=debug)
-    snapshot_ = _move_incomplete_dir(snapshots_root, date, user, host, debug)
-    _update_latest_symlink(date, snapshots_root, user, host, debug)
+    snapshot_ = _move_incomplete_dir(snapshots_root, snapshot_name, date, user, host, debug)
+    if snapshot_name is None:
+        _update_latest_symlink(date, snapshots_root, user, host, debug)
     _info("Successfully completed snapshot: {path}".format(path=snapshot_))
 
 
@@ -463,6 +478,8 @@ def _parse_cli(args=None):
         help="The maximum number of snapshots allowed for the backup "
              " (default: inf)",
         default=INF)
+    parser.add_argument(
+        '--name', dest='name', help="snapshot name") 
 
     try:
         args, extra_args = parser.parse_known_args(args)
@@ -485,6 +502,7 @@ def _parse_cli(args=None):
             args.debug,
             args.min_snapshots,
             args.max_snapshots,
+	    args.name,
             extra_args)
 
 
