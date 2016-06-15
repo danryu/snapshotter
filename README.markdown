@@ -144,6 +144,11 @@ space for a new snapshot. By default it will always keep at least 3 snapshots.
 To change this number use the `--min-snapshots` argument:
 
     snapshotter --min-snapshots 10 SRC DEST
+    
+To make a "named" snapshot which will be stored alongside the regular snapshots 
+and will not be latest-linked or deleted when too old, use the "--name" option:
+
+    snapshotter --name favourite_backup SRC DEST
 
 You can pass any rsync options to snapshotter and it will pass them on to
 rsync. For example:
